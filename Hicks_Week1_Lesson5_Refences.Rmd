@@ -1,0 +1,9 @@
+---
+title: "Hicks_Week1_Lesson5_References"
+author: "Michael Totty"
+date: "`r Sys.Date()`"
+output: html_document
+bibliography: my-refs.bib
+---
+
+I have been using the amazing Rmarkdown package [@R-rmarkdown]! I should also go and read [@rmarkdown2018; and @rmarkdown2020] books.
