@@ -1,0 +1,314 @@
+---
+title: "Hicks_Project1"
+author: "Michael Totty"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Load the data
+
+```{r}
+library(here)
+library(tidyverse)
+library(dplyr)
+
+# tests if a directory named "data" exists locally
+if(!dir.exists(here("data"))) { dir.create(here("data")) }
+
+# saves data only once (not each time you knit a R Markdown)
+if(!file.exists(here("data","chocolate.RDS"))) {
+  url_csv <- 'https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2022/2022-01-18/chocolate.csv'
+  chocolate <- readr::read_csv(url_csv)
+  
+  # save the file to RDS objects
+  saveRDS(chocolate, file= here("data","chocolate.RDS"))
+}
+
+```
+
+### Get a glimpse
+
+```{r}
+chocolate <- readRDS(here("data","chocolate.RDS"))
+as_tibble(chocolate)
+```
+
+```{r}
+glimpse(chocolate)
+
+```
+
+## Part 1: Explore the data
+
+In this part, use functions from dplyr and ggplot2 to answer the following questions.
+
+1.  Make a histogram of the rating scores to visualize the overall distribution of scores. Change the number of bins from the default to 10, 15, 20, and 25. Pick on the one that you think looks the best. Explain what the difference is when you change the number of bins and explain why you picked the one you did.
+
+```{r}
+hist(chocolate$rating, 
+breaks=15,
+main="Distribution of Chocolate Bar Ratings",
+xlab="Ratings",
+col="dodgerblue"
+)
+```
+
+The ratings are discrete values making the histogram look strange. When you make the bin size smaller, it aggregates the ratings together in larger groups removing that effect. I picked 15, but there really is no wrong answer. Just looking for an answer here.
+
+2.  Consider the countries where the beans originated from. How many reviews come from each country of bean origin?
+
+```{r}
+table(chocolate$country_of_bean_origin)
+```
+
+3.  What is average rating scores from reviews of chocolate bars that have Ecuador as country_of_bean_origin in this dataset? For this same set of reviews, also calculate (1) the total number of reviews and (2) the standard deviation of the rating scores. Your answer should be a new data frame with these three summary statistics in three columns. Label the name of these columns mean, sd, and total.
+
+```{r}
+table(chocolate$country_of_bean_origin)
+Ecuador_data <- filter(chocolate,country_of_bean_origin=="Ecuador")
+mean(Ecuador_data$rating)
+
+Ecuador_summary <- tibble(
+  average_rating <- mean(Ecuador_data$rating),
+  standard_deviation <- sd(Ecuador_data$rating),
+   number_of_reviews <- length(Ecuador_data$rating)
+)
+glimpse(Ecuador_summary)
+```
+
+4.  Which country makes the best chocolate (or has the highest ratings on average) with beans from Ecuador?
+
+```{r}
+
+filter(chocolate,country_of_bean_origin=="Ecuador") %>%
+  group_by(company_location) %>%
+  summarize(rating = mean(rating, na.rm = TRUE)) %>% 
+  slice_max(order_by=rating)
+
+filter(chocolate,country_of_bean_origin=="Ecuador") %>%
+  group_by(company_location) %>%
+  summarize(rating = mean(rating, na.rm = TRUE)) %>% 
+  slice_min(order_by=rating)
+
+```
+
+5.  Calculate the average rating across all country of origins for beans. Which top 3 countries have the highest ratings on average?
+
+```{r}
+group_by(chocolate, country_of_bean_origin) %>%
+  summarize(rating = mean(rating, na.rm = TRUE)) %>%
+  slice_max(order_by=rating, n=3)
+```
+
+6.  Following up on the previous problem, now remove any countries of bean origins that have less than 10 chocolate bar reviews. Now, which top 3 countries have the highest ratings on average?
+
+```{r}
+group_by(chocolate, country_of_bean_origin) %>%
+  mutate(n_ratings=length(rating)) %>%
+  filter(n_ratings>10) %>%
+  summarize(rating = mean(rating, na.rm = TRUE)) %>%
+  slice_max(order_by=rating, n=3)
+```
+
+7.  For this last part, let's explore the relationship between percent chocolate and ratings.
+
+Use the functions in dplyr, tidyr, and lubridate to perform the following steps to the chocolate dataset:
+
+1.  Identify the countries of bean origin with at least 50 reviews. Remove reviews from countries are not in this list.
+2.  Using the variable describing the chocolate percentage for each review, create a new column that groups chocolate percentages into one of four groups: (i) \<60%, (ii) \>=60 to \<70%, (iii) \>=70 to \<90%, and (iii) \>=90% (Hint check out the substr() function in base R and the case_when() function from dplyr -- see example below).
+3.  Using the new column described in #2, re-order the factor levels (if needed) to be starting with the smallest percentage group and increasing to the largest percentage group (Hint check out the fct_relevel() function from forcats).
+4.  For each country, make a set of four side-by-side boxplots plotting the groups on the x-axis and the ratings on the y-axis. These plots should be faceted by country.
+
+On average, which category of chocolate percentage is most highly rated? Do these countries mostly agree or are there disagreements?
+
+Hint: You may find the case_when() function useful in this part, which can be used to map values from one variable to different values in a new variable (when used in a mutate() call).
+
+```{r}
+# Answer 1
+filtered_data <- group_by(chocolate, country_of_bean_origin) %>%
+  mutate(n_ratings=length(rating)) %>%
+  filter(n_ratings>50)
+  
+# Answer 2
+filtered_data <- mutate(filtered_data, choc_group = case_when(
+                strtoi(substr(cocoa_percent, start = 1, stop = 2)) < 60 ~ "<60%",
+                between(strtoi(substr(cocoa_percent, start = 1, stop = 2)), 60,70) ~ "60-70%",
+                between(strtoi(substr(cocoa_percent, start = 1, stop = 2)), 70,90) ~ "70-90%",
+                strtoi(substr(cocoa_percent, start = 1, stop = 2)) >= 90 ~ ">90%",
+                
+        ))
+
+
+# Answer 3
+library(forcats)
+filtered_data$choc_group <- fct_relevel(filtered_data$choc_group, ">90%", after = 3)
+
+# Answer 4
+library(ggplot2)
+library(RColorBrewer)
+bp <- ggplot(filtered_data, aes(x=choc_group, y=rating, group=choc_group)) + 
+  geom_boxplot(aes(fill=choc_group))+
+  scale_fill_brewer(palette="Blues")
+bp
+bp + facet_wrap(~ country_of_bean_origin, ncol=5)
+
+```
+
+## Part 2: Join two datasets together
+
+The goal of this part of the assignment is to join two datasets together. `gapminder` is a [R package](https://cran.r-project.org/web/packages/gapminder/README.html) that contains an excerpt from the [Gapminder data](https://www.gapminder.org/data/).
+
+### **Tasks**
+
+1.  Use this dataset it to create a new column called `continent` in our `chocolate` dataset that contains the continent name for each review where the country of bean origin is.
+
+2.  Only keep reviews that have reviews from countries of bean origin with at least 10 reviews.
+
+3.  Also, remove the country of bean origin named `"Blend"`.
+
+4.  Make a set of violin plots with ratings on the y-axis and `continent`s on the x-axis.
+
+**Hint**:
+
+-   Check to see if there are any `NA`s in the new column. If there are any `NA`s, add the continent name for each row.
+
+```{r}
+library(gapminder)
+str(gapminder)
+
+## Answer 1
+# Rename Country column
+new_chocolate <- chocolate %>%
+  rename(country = country_of_bean_origin)
+
+# Add factor levels
+new_chocolate$country <- fct_relevel(new_chocolate$country,sort)
+  
+# Select Country and Continent data
+cc_data <- gapminder %>% 
+  select(country, continent)
+
+# Left Join
+df <- new_chocolate %>%
+  left_join(cc_data, by="country")
+
+# Get rid of duplicates
+new_chocolate <- df[!duplicated(df),]
+#new_chocolate$continent
+
+## Answer 2
+new_chocolate <- group_by(new_chocolate, country) %>%
+  mutate(n_ratings=length(rating)) %>%
+  filter(n_ratings>10)
+
+## Answer 3
+new_chocolate <- new_chocolate %>%
+  filter(!grepl('Blend', country))
+#new_chocolate$continent
+
+## Answer 4
+
+new_chocolate %>%
+  ggplot(aes(x = as.factor(continent), 
+             y = rating, 
+             fill = continent)) +
+  geom_violin()
+```
+
+## Part 3: Convert wide data into long data
+
+The goal of this part of the assignment is to take a dataset that is either messy or simply not tidy and to make them tidy datasets. The objective is to gain some familiarity with the functions in the `dplyr`, `tidyr` packages. You may find it helpful to review the section on spreading and gathering data.
+
+### **Tasks**
+
+We are going to create a set of features for us to plot over time. Use the functions in `dplyr` and `tidyr` to perform the following steps to the `chocolate` dataset:
+
+1.  Create a new set of columns titled `beans`, `sugar`, `cocoa_butter`, `vanilla`, `letchin`, and `salt` that contain a 1 or 0 representing whether or not that review for the chocolate bar contained that ingredient (1) or not (0).
+
+2.  Create a new set of columns titled `char_cocoa`, `char_sweet`, `char_nutty`, `char_creamy`, `char_roasty`, `char_earthy` that contain a 1 or 0 representing whether or not that the most memorable characteristic for the chocolate bar had that word (1) or not (0). For example, if the word "sweet" appears in the `most_memorable_characteristics`, then record a 1, otherwise a 0 for that review in the `char_sweet` column (**Hint**: check out `str_detect()` from the `stringr` package).
+
+3.  For each year (i.e. `review_date`), calculate the mean value in each new column you created across all reviews for that year. (**Hint**: If all has gone well thus far, you should have a dataset with 16 rows and 13 columns).
+
+4.  Convert this wide dataset into a long dataset with a new `feature` and `mean_score` column.
+
+It should look something like this:
+
+    review_date     feature   mean_score
+    <dbl>           <chr>     <dbl>
+    2006    beans   0.967741935     
+    2006    sugar   0.967741935     
+    2006    cocoa_butter    0.903225806     
+    2006    vanilla 0.693548387     
+    2006    letchin 0.693548387     
+    2006    salt    0.000000000     
+    2006    char_cocoa  0.209677419     
+    2006    char_sweet  0.161290323     
+    2006    char_nutty  0.032258065     
+    2006    char_creamy 0.241935484 
+
+### **Notes**
+
+-   You may need to use functions outside these packages to obtain this result.
+
+-   Do not worry about the ordering of the rows or columns. Depending on whether you use `gather()` or `pivot_longer()`, the order of your output may differ from what is printed above. As long as the result is a tidy data set, that is sufficient.
+
+```{r}
+
+
+```
+
+## Part 4: Data visualization
+
+In this part of the project, we will continue to work with our now tidy song dataset from the previous part.
+
+### **Tasks**
+
+Use the functions in `ggplot2` package to make a scatter plot of the `mean_score`s (y-axis) over time (x-axis). One plot for each `mean_score`. For full credit, your plot should include:
+
+1.  An overall title for the plot and a subtitle summarizing key trends that you found. Also include a caption in the figure with your name.
+
+2.  Both the observed points for the `mean_score`, but also a smoothed non-linear pattern of the trend
+
+3.  All plots should be shown in the one figure
+
+4.  There should be an informative x-axis and y-axis label
+
+Consider playing around with the `theme()` function to make the figure shine, including playing with background colors, font, etc.
+
+### **Notes**
+
+-   You may need to use functions outside these packages to obtain this result.
+
+-   Don't worry about the ordering of the rows or columns. Depending on whether you use `gather()` or `pivot_longer()`, the order of your output may differ from what is printed above. As long as the result is a tidy data set, that is sufficient.
+
+```{r}
+
+```
+
+## Part 5: Make the worst plot you can!
+
+This sounds a bit crazy I know, but I want this to try and be FUN! Instead of trying to make a "good" plot, I want you to explore your creative side and make a really awful data visualization in every way. :)
+
+### **Tasks**
+
+Using the `chocolate` dataset (or any of the modified versions you made throughout this assignment or anything else you wish you build upon it):
+
+1.  Make the absolute worst plot that you can. You need to customize it in **at least 7 ways** to make it awful.
+
+2.  In your document, write 1 - 2 sentences about each different customization you added (using bullets -- i.e. there should be at least 7 bullet points each with 1-2 sentences), and how it could be useful for you when you want to make an awesome data visualization.
+
+```{r}
+
+```
+
+## Part 6: Make my plot a better plot!
+
+The goal is to take my sad looking plot and make it better! If you'd like an [example](https://twitter.com/drmowinckels/status/1392136510468763652), here is a tweet I came across of someone who gave a talk about how to zhoosh up your ggplots.
+
+```{r}
+chocolate %>%
+  ggplot(aes(x = as.factor(review_date), 
+             y = rating, 
+             fill = review_date)) +
+  geom_violin()
+```
